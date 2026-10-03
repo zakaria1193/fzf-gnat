@@ -1,7 +1,7 @@
 """Find the Ada unit that a source file holds."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import tree_sitter_ada
@@ -25,17 +25,20 @@ class UnitName:
     kind: str
     """``spec``, ``body`` or ``subunit``."""
 
+    line: int = field(default=1, compare=False)
+    """1-based line of the unit's own name, where a preview should centre."""
+
 
 def _text(node: Node) -> str:
     # GNAT sources are Latin-1, and the grammar allows spaces around the dots.
     return re.sub(r"\s+", "", node.text.decode("latin-1"))
 
 
-def _declared_name(node: Node) -> str | None:
-    for field in ("name", "defining_program_unit_name"):
-        name = node.child_by_field_name(field)
+def _declared_name(node: Node) -> Node | None:
+    for field_name in ("name", "defining_program_unit_name"):
+        name = node.child_by_field_name(field_name)
         if name is not None:
-            return _text(name)
+            return name
     # Generics and subprograms keep the name one level down, in the wrapped
     # package_declaration or in the *_specification.
     for child in node.named_children:
@@ -69,8 +72,13 @@ def _unit_name(item: Node) -> UnitName | None:
         inner = _declared_name(body) if body is not None else None
         if parent is None or inner is None:
             return None
-        return UnitName(f"{_text(parent)}.{inner}", "subunit")
+        return UnitName(f"{_text(parent)}.{_text(inner)}", "subunit", _line(inner))
     name = _declared_name(item)
     if name is None:
         return None
-    return UnitName(name, "body" if item.type.endswith("_body") else "spec")
+    kind = "body" if item.type.endswith("_body") else "spec"
+    return UnitName(_text(name), kind, _line(name))
+
+
+def _line(node: Node) -> int:
+    return node.start_point[0] + 1

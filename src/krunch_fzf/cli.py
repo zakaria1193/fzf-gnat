@@ -30,13 +30,13 @@ class ProgressBar:
 
 
 def format_lines(entries: list[Entry], root: Path) -> list[str]:
-    """Return one fzf line per entry: file name, kind, unit and absolute path, padded into columns."""
+    """Return one fzf line per entry: file name, kind, unit, absolute path and unit line, padded into columns."""
     names = [Path(e.relpath).name for e in entries]
     name_width = max(map(len, names), default=0)
     kind_width = max((len(e.kind) for e in entries), default=0)
     unit_width = max((len(e.unit) for e in entries), default=0)
     return [
-        f"{name:<{name_width}}\t{e.kind:<{kind_width}}\t{e.unit:<{unit_width}}\t{root / e.relpath}"
+        f"{name:<{name_width}}\t{e.kind:<{kind_width}}\t{e.unit:<{unit_width}}\t{root / e.relpath}\t{e.line}"
         for name, e in zip(names, entries)
     ]
 
@@ -46,7 +46,7 @@ def preview_command() -> str:
     # Debian and Ubuntu install bat as batcat.
     for bat in ("bat", "batcat"):
         if shutil.which(bat):
-            return f"{bat} --color=always --style=numbers {{4}}"
+            return f"{bat} --color=always --style=numbers {{4}} --highlight-line {{5}}"
     return "cat {4}"
 
 
@@ -57,12 +57,28 @@ def fzf_argv(preview: str) -> list[str]:
         "--delimiter", "\t",
         "--tabstop", "4",
         "--preview", preview,
-        "--preview-window", "up,60%",
+        # Field 5, the unit's line, stays hidden and centres the preview.
+        "--with-nth", "1..4",
+        "--preview-window", "up,60%,+{5}/2",
     ]
 
 
-def editor_argv(paths: list[str]) -> list[str]:
-    return [*shlex.split(os.environ.get("EDITOR") or "vi"), *paths]
+# Editors that take +LINE before a file. With several files, it applies to
+# the first one only.
+_PLUS_LINE_EDITORS = {"vi", "vim", "nvim", "gvim", "view", "nano", "emacs", "emacsclient", "micro"}
+_GOTO_EDITORS = {"code", "codium"}
+
+
+def editor_argv(files: list[tuple[str, int]]) -> list[str]:
+    """Return the $EDITOR command that opens ``files``, at the given line of the first one when the editor supports it."""
+    editor = shlex.split(os.environ.get("EDITOR") or "vi")
+    name = os.path.basename(editor[0])
+    (first, line), rest = files[0], [path for path, _ in files[1:]]
+    if name in _PLUS_LINE_EDITORS:
+        return [*editor, f"+{line}", first, *rest]
+    if name in _GOTO_EDITORS:
+        return [*editor, "-g", f"{first}:{line}", *rest]
+    return [*editor, first, *rest]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,7 +137,10 @@ def _main(argv: list[str] | None) -> int:
     result = subprocess.run(
         fzf_argv(preview_command()), input=lines, stdout=subprocess.PIPE, text=True, cwd=root
     )
-    selected = [line.split("\t")[3] for line in result.stdout.splitlines() if line]
+    selected = [
+        (fields[3], int(fields[4]))
+        for fields in (line.split("\t") for line in result.stdout.splitlines() if line)
+    ]
     if result.returncode != 0 or not selected:
         return 0
     editor = editor_argv(selected)

@@ -73,3 +73,13 @@ def test_no_body_file_has_no_name(make_tree):
 def test_garbage_has_no_name(make_tree):
     root = make_tree({"x.ads": "@@@ this is not Ada @@@\n"})
     assert unit_name(root / "x.ads") is None
+
+
+def test_line_of_the_unit_name(make_tree):
+    root = make_tree({"p.adb": "with X;\n--  note\n\npackage body P is\nend P;\n"})
+    assert unit_name(root / "p.adb").line == 4
+
+
+def test_line_of_a_subunit(make_tree):
+    root = make_tree({"p-s.adb": "separate (P)\n\nprocedure S is\nbegin\n   null;\nend S;\n"})
+    assert unit_name(root / "p-s.adb").line == 3

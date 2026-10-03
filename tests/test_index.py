@@ -221,3 +221,11 @@ def test_interrupt_names_the_file(make_tree, caplog):
     with pytest.raises(KeyboardInterrupt):
         build_index(root, namer=namer)
     assert "interrupted while parsing a.ads" in caplog.text
+
+
+def test_line_survives_the_cache(make_tree):
+    root = make_tree({"p.ads": "with X;\npackage P is\nend P;\n"})
+    assert build_index(root)[0].line == 2
+    namer = CountingNamer()
+    assert build_index(root, namer=namer)[0].line == 2
+    assert namer.calls == []

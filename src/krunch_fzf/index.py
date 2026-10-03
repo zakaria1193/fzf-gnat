@@ -6,7 +6,7 @@ import logging
 import os
 import stat
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from krunch_fzf.names import unit_name
@@ -20,6 +20,10 @@ SKIP_DIRS = {".git", "obj", "lib"}
 SKIP_DIR_SUFFIX = ".dekrunched"
 
 
+# mtime_ns, size, unit, kind, line
+Row = tuple[int, int, str, str, int]
+
+
 @dataclass(frozen=True)
 class Entry:
     """One line of the search list."""
@@ -27,6 +31,7 @@ class Entry:
     relpath: str
     unit: str
     kind: str
+    line: int = field(default=1, compare=False)
 
 
 def cache_path(root: Path) -> Path:
@@ -51,18 +56,18 @@ def _walk(root: Path):
             yield rel
 
 
-def _read_cache(path: Path) -> dict[str, tuple[int, int, str, str]] | None:
+def _read_cache(path: Path) -> dict[str, Row] | None:
     try:
         with path.open(newline="") as f:
             return {
-                rel: (int(mtime), int(size), unit, kind)
-                for rel, mtime, size, unit, kind in csv.reader(f, delimiter="\t")
+                rel: (int(mtime), int(size), unit, kind, int(line))
+                for rel, mtime, size, unit, kind, line in csv.reader(f, delimiter="\t")
             }
     except (OSError, ValueError):
         return None
 
 
-def _find_store(root: Path) -> tuple[Path, str, dict[str, tuple[int, int, str, str]]]:
+def _find_store(root: Path) -> tuple[Path, str, dict[str, Row]]:
     """Return the nearest readable cache of ``root`` or an ancestor, root's path prefix in it, and its rows."""
     for tree in (root, *root.parents):
         path = cache_path(tree)
@@ -75,7 +80,7 @@ def _find_store(root: Path) -> tuple[Path, str, dict[str, tuple[int, int, str, s
     return cache_path(root), "", {}
 
 
-def _write_cache(path: Path, rows: dict[str, tuple[int, int, str, str]]) -> None:
+def _write_cache(path: Path, rows: dict[str, Row]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A unique temp name, so that two runs on the same root never write the
     # same file; the last rename wins.
@@ -92,7 +97,7 @@ def _write_cache(path: Path, rows: dict[str, tuple[int, int, str, str]]) -> None
     os.replace(f.name, path)
 
 
-def _parse(root: Path, rel: str, st: os.stat_result, namer) -> tuple[int, int, str, str] | None:
+def _parse(root: Path, rel: str, st: os.stat_result, namer) -> Row | None:
     try:
         found = namer(root / rel)
     except OSError as e:
@@ -100,8 +105,8 @@ def _parse(root: Path, rel: str, st: os.stat_result, namer) -> tuple[int, int, s
         return None
     if found is None:
         log.warning(f"{rel}: no Ada unit found")
-        return (st.st_mtime_ns, st.st_size, "?", "body" if rel.endswith(".adb") else "spec")
-    return (st.st_mtime_ns, st.st_size, found.name, found.kind)
+        return (st.st_mtime_ns, st.st_size, "?", "body" if rel.endswith(".adb") else "spec", 1)
+    return (st.st_mtime_ns, st.st_size, found.name, found.kind, found.line)
 
 
 def build_index(
@@ -156,6 +161,6 @@ def build_index(
         merged.update((f"{prefix}{rel}", row) for rel, row in rows.items())
         _write_cache(cache, merged)
     return sorted(
-        (Entry(rel, unit, kind) for rel, (_, _, unit, kind) in rows.items()),
+        (Entry(rel, unit, kind, line) for rel, (_, _, unit, kind, line) in rows.items()),
         key=lambda e: (e.unit, e.relpath),
     )

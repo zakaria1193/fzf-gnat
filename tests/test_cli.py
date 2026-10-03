@@ -15,12 +15,12 @@ def cache_home(tmp_path_factory, monkeypatch):
 
 def test_format_lines_aligns_columns(tmp_path):
     entries = [
-        Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec"),
-        Entry("src/s-textio__pl011.adb", "System.Text_IO", "body"),
+        Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec", 40),
+        Entry("src/s-textio__pl011.adb", "System.Text_IO", "body", 7),
     ]
     assert cli.format_lines(entries, tmp_path) == [
-        f"a-strunb.ads       \tspec\tAda.Strings.Unbounded\t{tmp_path}/libgnat/a-strunb.ads",
-        f"s-textio__pl011.adb\tbody\tSystem.Text_IO       \t{tmp_path}/src/s-textio__pl011.adb",
+        f"a-strunb.ads       \tspec\tAda.Strings.Unbounded\t{tmp_path}/libgnat/a-strunb.ads\t40",
+        f"s-textio__pl011.adb\tbody\tSystem.Text_IO       \t{tmp_path}/src/s-textio__pl011.adb\t7",
     ]
 
 
@@ -28,7 +28,7 @@ def test_print_writes_index(make_tree, capsys):
     root = make_tree({"src/s-textio.ads": "package System.Text_IO is\nend System.Text_IO;\n"})
     assert cli.main(["--print", str(root)]) == 0
     assert capsys.readouterr().out == (
-        f"s-textio.ads\tspec\tSystem.Text_IO\t{root.resolve()}/src/s-textio.ads\n"
+        f"s-textio.ads\tspec\tSystem.Text_IO\t{root.resolve()}/src/s-textio.ads\t1\n"
     )
 
 
@@ -50,7 +50,9 @@ def test_fzf_argv_searches_all_fields():
     assert "--multi" in argv
     assert argv[argv.index("--delimiter") + 1] == "\t"
     assert argv[argv.index("--preview") + 1] == "cat {4}"
-    assert argv[argv.index("--preview-window") + 1].startswith("up")
+    window = argv[argv.index("--preview-window") + 1]
+    assert window.startswith("up") and "+{5}" in window
+    assert argv[argv.index("--with-nth") + 1] == "1..4"
 
 
 def test_preview_falls_back_to_cat(monkeypatch):
@@ -60,12 +62,24 @@ def test_preview_falls_back_to_cat(monkeypatch):
 
 def test_editor_with_arguments(monkeypatch):
     monkeypatch.setenv("EDITOR", "code -w")
-    assert cli.editor_argv(["/r/a.ads"]) == ["code", "-w", "/r/a.ads"]
+    assert cli.editor_argv([("/r/a.ads", 7)]) == ["code", "-w", "-g", "/r/a.ads:7"]
 
 
 def test_editor_defaults_to_vi(monkeypatch):
     monkeypatch.delenv("EDITOR", raising=False)
-    assert cli.editor_argv(["/r/a.ads"]) == ["vi", "/r/a.ads"]
+    assert cli.editor_argv([("/r/a.ads", 7)]) == ["vi", "+7", "/r/a.ads"]
+
+
+def test_editor_with_a_path_opens_at_line(monkeypatch):
+    monkeypatch.setenv("EDITOR", "/usr/bin/nvim")
+    assert cli.editor_argv([("/r/a.ads", 3), ("/r/b.ads", 9)]) == [
+        "/usr/bin/nvim", "+3", "/r/a.ads", "/r/b.ads"
+    ]
+
+
+def test_unknown_editor_gets_only_paths(monkeypatch):
+    monkeypatch.setenv("EDITOR", "ed")
+    assert cli.editor_argv([("/r/a.ads", 3)]) == ["ed", "/r/a.ads"]
 
 
 class FakeRun:
@@ -85,10 +99,10 @@ def test_enter_opens_selection(make_tree, monkeypatch):
     root = make_tree({"a.ads": "package A is\nend A;\n"})
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setenv("EDITOR", "vi")
-    run = FakeRun(0, f"a.ads\tspec\tA\t{root.resolve()}/a.ads\n")
+    run = FakeRun(0, f"a.ads\tspec\tA\t{root.resolve()}/a.ads\t1\n")
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 0
-    assert run.calls[-1] == ["vi", str(root.resolve() / "a.ads")]
+    assert run.calls[-1] == ["vi", "+1", str(root.resolve() / "a.ads")]
 
 
 def test_escape_opens_nothing(make_tree, monkeypatch):
@@ -108,7 +122,7 @@ def test_missing_editor_exits_2(make_tree, monkeypatch, capsys):
     def run(argv, **kwargs):
         if argv[0] != "fzf":
             raise FileNotFoundError(argv[0])
-        return cli.subprocess.CompletedProcess(argv, 0, stdout=f"a.ads\tspec\tA\t{root.resolve()}/a.ads\n")
+        return cli.subprocess.CompletedProcess(argv, 0, stdout=f"a.ads\tspec\tA\t{root.resolve()}/a.ads\t1\n")
 
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 2
