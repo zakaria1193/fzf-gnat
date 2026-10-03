@@ -250,16 +250,16 @@ SYMBOL_TREE = {
 def test_symbol_index_package_level(make_tree):
     root = make_tree(SYMBOL_TREE)
     assert build_symbol_index(root, local=False) == [
-        SymbolEntry("p.adb", "P", "package", 1),
-        SymbolEntry("p.ads", "P", "package", 1),
-        SymbolEntry("p.adb", "P.Q", "procedure", 2),
-        SymbolEntry("p.ads", "P.Q", "procedure", 2),
+        SymbolEntry("p.adb", "P", "package", 1, "P"),
+        SymbolEntry("p.ads", "P", "package", 1, "P"),
+        SymbolEntry("p.adb", "P.Q", "procedure", 2, "P"),
+        SymbolEntry("p.ads", "P.Q", "procedure", 2, "P"),
     ]
 
 
 def test_symbol_index_with_locals(make_tree):
     root = make_tree(SYMBOL_TREE)
-    assert SymbolEntry("p.adb", "P.Q.L", "object", 3) in build_symbol_index(root, local=True)
+    assert SymbolEntry("p.adb", "P.Q.L", "object", 3, "P") in build_symbol_index(root, local=True)
 
 
 def test_symbol_caches_are_separate_and_reused(make_tree, monkeypatch):
@@ -283,3 +283,8 @@ def test_file_without_symbols_is_not_parsed_again(make_tree, monkeypatch):
     monkeypatch.setattr(index, "symbols", lambda path, local: calls.append(path) or [])
     build_symbol_index(root, local=False)
     assert calls == []
+
+
+def test_symbol_unit_of_a_subunit(make_tree):
+    root = make_tree({"p-q.adb": "separate (P)\nprocedure Q is\n   L : Integer;\nbegin\n   null;\nend Q;\n"})
+    assert {e.unit for e in build_symbol_index(root, local=True)} == {"P.Q"}

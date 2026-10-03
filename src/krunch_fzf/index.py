@@ -44,6 +44,8 @@ class SymbolEntry:
     name: str
     kind: str
     line: int
+    unit: str
+    """The unit of the file the symbol is in."""
 
 
 def cache_path(root: Path, variant: str = "") -> Path:
@@ -226,7 +228,8 @@ def build_symbol_index(
     rows = _scan(root, variant, rebuild, progress, extract)
     return sorted(
         (
-            SymbolEntry(rel, name, kind, int(line))
+            # symbols() lists the unit itself first.
+            SymbolEntry(rel, name, kind, int(line), records[0][0])
             for rel, records in rows.items()
             for name, kind, line in records
         ),

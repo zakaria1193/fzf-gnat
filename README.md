@@ -38,6 +38,6 @@ krunch-fzf -sa ROOT   # every declaration, locals included
 ```
 
 Each line shows the qualified name, such as `Ada.Strings.Unbounded.Append`,
-its kind and its file. Enter opens the editor at the declaration.
+its kind, the unit it belongs to and its file. Enter opens the editor at the declaration.
 
 Use `-q TEXT` to start fzf with a query already typed.

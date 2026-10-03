@@ -5,7 +5,7 @@ import os
 import pytest
 
 from krunch_fzf import cli
-from krunch_fzf.index import Entry
+from krunch_fzf.index import Entry, SymbolEntry
 
 
 @pytest.fixture(autouse=True)
@@ -13,18 +13,37 @@ def cache_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))
 
 
-def test_format_lines_aligns_columns(tmp_path):
+def visible(line):
+    return "\t".join(line.split("\t")[:4])
+
+
+def test_format_lines_aligns_columns():
     entries = [
         Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec", 40),
         Entry("src/s-textio__pl011.adb", "System.Text_IO", "body", 7),
     ]
     root = cli.Path("/r")
-    shown = f"{'/r/libgnat/a-strunb.ads':<{cli.PATH_WIDTH}}"
-    shown2 = f"{'/r/src/s-textio__pl011.adb':<{cli.PATH_WIDTH}}"
-    assert cli.format_lines(entries, root) == [
-        f"a-strunb.ads       \tspec\tAda.Strings.Unbounded\t{shown}\t/r/libgnat/a-strunb.ads\t40",
-        f"s-textio__pl011.adb\tbody\tSystem.Text_IO       \t{shown2}\t/r/src/s-textio__pl011.adb\t7",
+    # 80 columns, less the fzf gutter (3), the name, kind and unit widths
+    # (19 + 4 + 21) and three tab separators leave 30 for the path.
+    assert cli.format_lines(entries, root, columns=80) == [
+        f"a-strunb.ads       \tspec\tAda.Strings.Unbounded\t{'/r/libgnat/a-strunb.ads':<30}"
+        "\t/r/libgnat/a-strunb.ads\t40",
+        f"s-textio__pl011.adb\tbody\tSystem.Text_IO       \t{'/r/src/s-textio__pl011.adb':<30}"
+        "\t/r/src/s-textio__pl011.adb\t7",
     ]
+
+
+def test_path_takes_the_rest_of_the_line():
+    entries = [Entry("a.ads", "A", "spec"), Entry("x/" * 60 + "b.ads", "B", "spec")]
+    for columns in (80, 200):
+        lines = cli.format_lines(entries, cli.Path("/r"), columns=columns)
+        assert {len(visible(line)) for line in lines} == {columns - 3}
+
+
+def test_path_keeps_a_minimum_width():
+    entries = [Entry("a.ads", "A" * 100, "spec")]
+    line = cli.format_lines(entries, cli.Path("/r"), columns=80)[0]
+    assert len(line.split("\t")[3]) == 20
 
 
 def test_long_path_is_cut_in_the_middle():
@@ -39,21 +58,12 @@ def test_short_path_is_kept():
     assert cli.shorten("/r/a.ads", 40) == "/r/a.ads"
 
 
-def test_path_column_width_is_fixed(tmp_path):
-    entries = [
-        Entry("a.ads", "A", "spec"),
-        Entry("x/" * 60 + "b.ads", "B", "spec"),
-    ]
-    widths = {len(line.split("\t")[3]) for line in cli.format_lines(entries, tmp_path)}
-    assert widths == {cli.PATH_WIDTH}
-
-
 def test_print_writes_index(make_tree, capsys):
     root = make_tree({"src/s-textio.ads": "package System.Text_IO is\nend System.Text_IO;\n"})
     assert cli.main(["--print", str(root)]) == 0
     assert capsys.readouterr().out == (
         f"s-textio.ads\tspec\tSystem.Text_IO\t"
-        f"{cli.shorten(f'{root.resolve()}/src/s-textio.ads', cli.PATH_WIDTH):<{cli.PATH_WIDTH}}\t"
+        f"{cli.shorten(f'{root.resolve()}/src/s-textio.ads', 120 - 3 - 30 - 3):<84}\t"
         f"{root.resolve()}/src/s-textio.ads\t1\n"
     )
 
@@ -79,6 +89,7 @@ def test_fzf_argv_searches_all_fields():
     window = argv[argv.index("--preview-window") + 1]
     assert window.startswith("up") and "+{6}" in window
     assert argv[argv.index("--with-nth") + 1] == "1..4"
+    assert argv[argv.index("--tabstop") + 1] == "1"
 
 
 def test_preview_falls_back_to_cat(monkeypatch):
@@ -247,18 +258,18 @@ def printed_symbols(make_tree, capsys, flag):
 
 def test_s_lists_package_level_symbols(make_tree, capsys):
     rows = printed_symbols(make_tree, capsys, "-s")
-    assert [(r[0].strip(), r[1].strip(), r[2].strip(), r[5]) for r in rows] == [
-        ("P", "package", "p.adb", "1"),
-        ("P", "package", "p.ads", "1"),
-        ("P.Q", "procedure", "p.adb", "2"),
-        ("P.Q", "procedure", "p.ads", "2"),
+    assert [(r[0].strip(), r[1].strip(), r[2].strip(), r[4][-5:], r[5]) for r in rows] == [
+        ("P", "package", "P", "p.adb", "1"),
+        ("P", "package", "P", "p.ads", "1"),
+        ("P.Q", "procedure", "P", "p.adb", "2"),
+        ("P.Q", "procedure", "P", "p.ads", "2"),
     ]
     assert rows[0][4].endswith("/p.adb")
 
 
 def test_ss_lists_spec_symbols_only(make_tree, capsys):
     rows = printed_symbols(make_tree, capsys, "-ss")
-    assert {r[2].strip() for r in rows} == {"p.ads"}
+    assert {r[4][-5:] for r in rows} == {"p.ads"}
 
 
 def test_sa_includes_locals(make_tree, capsys):
@@ -288,3 +299,19 @@ def test_fzf_output_is_ignored_when_it_fails(make_tree, monkeypatch):
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 0
     assert len(run.calls) == 1
+
+
+def test_symbol_lines_size_name_and_unit_and_fill_with_path():
+    entries = [
+        SymbolEntry(
+            "libgnat/a-strunb.ads", "Ada.Strings.Unbounded.Append", "procedure", 400,
+            "Ada.Strings.Unbounded",
+        ),
+        SymbolEntry("src/s-textio__pl011.adb", "System.Text_IO.Put", "procedure", 9, "System.Text_IO"),
+    ]
+    lines = cli.format_symbol_lines(entries, cli.Path("/r"), columns=150)
+    fields = [line.split("\t") for line in lines]
+    assert {len(f[0]) for f in fields} == {len("Ada.Strings.Unbounded.Append")}
+    assert [f[2].strip() for f in fields] == ["Ada.Strings.Unbounded", "System.Text_IO"]
+    assert {len(f[2]) for f in fields} == {len("Ada.Strings.Unbounded")}
+    assert {len(visible(line)) for line in lines} == {150 - 3}

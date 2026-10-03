@@ -29,7 +29,13 @@ class ProgressBar:
         self.out.flush()
 
 
-PATH_WIDTH = 50
+DEFAULT_COLUMNS = 120
+
+# fzf's pointer and marker take two columns on the left, its scrollbar one on
+# the right.
+FZF_GUTTER = 3
+
+MIN_PATH_WIDTH = 20
 
 
 def shorten(path: str, width: int) -> str:
@@ -42,29 +48,35 @@ def shorten(path: str, width: int) -> str:
     return f"{path[:head]}...{path[len(path) - (keep - head):]}"
 
 
-def _columns(rows: list[tuple[str, str, str, Path, int]]) -> list[str]:
-    # The shown path has a fixed width so that a deep tree cannot push the
-    # columns around. The full path and the line follow, hidden, for the
-    # preview and the editor.
+def _columns(rows: list[tuple[str, str, str, Path, int]], columns: int) -> list[str]:
+    # The first three columns take their longest value and the shown path
+    # gets what is left of the line. The full path and the line follow,
+    # hidden, for the preview and the editor. fzf runs with --tabstop 1, so
+    # each tab shows as one space.
     widths = [max((len(row[i]) for row in rows), default=0) for i in range(3)]
+    path_width = max(MIN_PATH_WIDTH, columns - FZF_GUTTER - sum(widths) - 3)
     return [
         f"{a:<{widths[0]}}\t{b:<{widths[1]}}\t{c:<{widths[2]}}\t"
-        f"{shorten(str(path), PATH_WIDTH):<{PATH_WIDTH}}\t{path}\t{line}"
+        f"{shorten(str(path), path_width):<{path_width}}\t{path}\t{line}"
         for a, b, c, path, line in rows
     ]
 
 
-def format_lines(entries: list[Entry], root: Path) -> list[str]:
-    """Return one fzf line per entry: file name, kind, unit and shortened path, then the hidden full path and unit line."""
+def format_lines(entries: list[Entry], root: Path, columns: int = DEFAULT_COLUMNS) -> list[str]:
+    """Return one fzf line per entry, ``columns`` wide: file name, kind, unit and shortened path, then the hidden full path and unit line."""
     return _columns(
-        [(Path(e.relpath).name, e.kind, e.unit, root / e.relpath, e.line) for e in entries]
+        [(Path(e.relpath).name, e.kind, e.unit, root / e.relpath, e.line) for e in entries],
+        columns,
     )
 
 
-def format_symbol_lines(entries: list[SymbolEntry], root: Path) -> list[str]:
-    """Return one fzf line per symbol: name, kind, file name and shortened path, then the hidden full path and line."""
+def format_symbol_lines(
+    entries: list[SymbolEntry], root: Path, columns: int = DEFAULT_COLUMNS
+) -> list[str]:
+    """Return one fzf line per symbol, ``columns`` wide: name, kind, unit and shortened path, then the hidden full path and line."""
     return _columns(
-        [(e.name, e.kind, Path(e.relpath).name, root / e.relpath, e.line) for e in entries]
+        [(e.name, e.kind, e.unit, root / e.relpath, e.line) for e in entries],
+        columns,
     )
 
 
@@ -82,7 +94,7 @@ def fzf_argv(preview: str, query: str = "") -> list[str]:
         "fzf",
         "--multi",
         "--delimiter", "\t",
-        "--tabstop", "4",
+        "--tabstop", "1",
         "--preview", preview,
         # Fields 5 and 6, the full path and the line, stay hidden; the line
         # centres the preview.
@@ -165,15 +177,17 @@ def _main(argv: list[str] | None) -> int:
         return 2
 
     progress = ProgressBar(sys.stderr) if tty else None
+    columns = os.get_terminal_size(sys.stderr.fileno()).columns if tty else DEFAULT_COLUMNS
     if args.symbols:
         found = build_symbol_index(
             root, local=args.symbols == "all", rebuild=args.rebuild, progress=progress
         )
         if args.symbols == "spec":
             found = [e for e in found if e.relpath.endswith(".ads")]
-        formatted = format_symbol_lines(found, root)
+        formatted = format_symbol_lines(found, root, columns)
     else:
-        formatted = format_lines(build_index(root, rebuild=args.rebuild, progress=progress), root)
+        entries = build_index(root, rebuild=args.rebuild, progress=progress)
+        formatted = format_lines(entries, root, columns)
     lines = "".join(f"{line}\n" for line in formatted)
     if args.print:
         try:
