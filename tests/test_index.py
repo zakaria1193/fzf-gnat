@@ -152,3 +152,55 @@ def test_interrupt_keeps_parsed_files_in_cache(make_tree):
     counting = CountingNamer()
     build_index(root, namer=counting)
     assert len(counting.calls) == 2
+
+
+def test_subdir_reuses_parent_cache(make_tree):
+    root = make_tree(TREE)
+    build_index(root)
+    namer = CountingNamer()
+    assert build_index(root / "libgnat", namer=namer) == [
+        Entry("a-strunb.adb", "Ada.Strings.Unbounded", "body"),
+        Entry("a-strunb.ads", "Ada.Strings.Unbounded", "spec"),
+    ]
+    assert namer.calls == []
+    assert not cache_path(root / "libgnat").exists()
+
+
+def test_grandchild_reuses_grandparent_cache(make_tree):
+    root = make_tree({**TREE, "src/deep/x.ads": "package X is\nend X;\n"})
+    build_index(root)
+    namer = CountingNamer()
+    assert build_index(root / "src/deep", namer=namer) == [Entry("x.ads", "X", "spec")]
+    assert namer.calls == []
+
+
+def test_subdir_changes_go_into_parent_cache(make_tree):
+    root = make_tree(TREE)
+    build_index(root)
+    (root / "src/s-textio.ads").write_text("package System.Text_IO_2 is\nend System.Text_IO_2;\n")
+    (root / "src/new.ads").write_text("package New_One is\nend New_One;\n")
+    assert len(build_index(root / "src")) == 2
+    namer = CountingNamer()
+    entries = build_index(root, namer=namer)
+    assert namer.calls == []
+    assert Entry("src/s-textio.ads", "System.Text_IO_2", "spec") in entries
+    assert Entry("src/new.ads", "New_One", "spec") in entries
+    assert Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec") in entries
+
+
+def test_subdir_rebuild_leaves_rest_of_parent_cache(make_tree):
+    root = make_tree(TREE)
+    build_index(root)
+    build_index(root / "src", rebuild=True)
+    namer = CountingNamer()
+    assert len(build_index(root, namer=namer)) == 3
+    assert namer.calls == []
+
+
+def test_corrupt_parent_cache_is_left_alone(make_tree):
+    root = make_tree(TREE)
+    parent = cache_path(root)
+    parent.parent.mkdir(parents=True, exist_ok=True)
+    parent.write_text("garbage line\n")
+    assert len(build_index(root / "src")) == 1
+    assert parent.read_text() == "garbage line\n"

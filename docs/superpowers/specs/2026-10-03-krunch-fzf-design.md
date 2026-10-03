@@ -82,6 +82,8 @@ The package is `krunch_fzf`, in `src/krunch_fzf/`.
   interrupted run cannot leave a half-written cache.
 - A cache file that cannot be read is ignored and rebuilt.
 - `--rebuild` ignores the existing cache.
+- A root with no cache of its own uses the nearest ancestor's cache, and
+  writes its changes back there. Only the files under the root are checked.
 
 ## Errors
 

@@ -50,7 +50,7 @@ def _walk(root: Path):
             yield rel
 
 
-def _read_cache(path: Path) -> dict[str, tuple[int, int, str, str]]:
+def _read_cache(path: Path) -> dict[str, tuple[int, int, str, str]] | None:
     try:
         with path.open(newline="") as f:
             return {
@@ -58,7 +58,20 @@ def _read_cache(path: Path) -> dict[str, tuple[int, int, str, str]]:
                 for rel, mtime, size, unit, kind in csv.reader(f, delimiter="\t")
             }
     except (OSError, ValueError):
-        return {}
+        return None
+
+
+def _find_store(root: Path) -> tuple[Path, str, dict[str, tuple[int, int, str, str]]]:
+    """Return the nearest readable cache of ``root`` or an ancestor, root's path prefix in it, and its rows."""
+    for tree in (root, *root.parents):
+        path = cache_path(tree)
+        if tree != root and not path.exists():
+            continue
+        rows = _read_cache(path)
+        if rows is not None:
+            prefix = root.relative_to(tree).as_posix()
+            return path, "" if prefix == "." else f"{prefix}/", rows
+    return cache_path(root), "", {}
 
 
 def _write_cache(path: Path, rows: dict[str, tuple[int, int, str, str]]) -> None:
@@ -98,8 +111,13 @@ def build_index(
     ``progress(done, total)`` is called before the first parse and after each
     one, where ``total`` counts only the files that need parsing.
     """
-    cache = cache_path(root)
-    old = {} if rebuild else _read_cache(cache)
+    root = root.resolve()
+    # A tree inside an already indexed one shares its cache, so that moving
+    # into a subdirectory does not mean parsing it all again.
+    cache, prefix, stored = _find_store(root)
+    old = {} if rebuild else {
+        rel[len(prefix):]: row for rel, row in stored.items() if rel.startswith(prefix)
+    }
     rows = {}
     todo = []
     for rel in _walk(root):
@@ -125,7 +143,9 @@ def build_index(
                 progress(done, len(todo))
     finally:
         # Also on Ctrl-C, so that the next run resumes instead of starting over.
-        _write_cache(cache, rows)
+        merged = {rel: row for rel, row in stored.items() if not rel.startswith(prefix)}
+        merged.update((f"{prefix}{rel}", row) for rel, row in rows.items())
+        _write_cache(cache, merged)
     return sorted(
         (Entry(rel, unit, kind) for rel, (_, _, unit, kind) in rows.items()),
         key=lambda e: (e.unit, e.relpath),
