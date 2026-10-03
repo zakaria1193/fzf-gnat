@@ -4,6 +4,7 @@ import csv
 import hashlib
 import logging
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,6 +127,10 @@ def build_index(
         except OSError as e:
             log.warning(f"skipping {rel}: {e.strerror}")
             continue
+        # Reading a FIFO or a device never returns.
+        if not stat.S_ISREG(st.st_mode):
+            log.warning(f"skipping {rel}: not a regular file")
+            continue
         hit = old.get(rel)
         if hit and hit[:2] == (st.st_mtime_ns, st.st_size):
             rows[rel] = hit
@@ -136,7 +141,11 @@ def build_index(
         progress(0, len(todo))
     try:
         for done, (rel, st) in enumerate(todo, start=1):
-            row = _parse(root, rel, st, namer)
+            try:
+                row = _parse(root, rel, st, namer)
+            except KeyboardInterrupt:
+                log.error(f"interrupted while parsing {rel}")
+                raise
             if row is not None:
                 rows[rel] = row
             if progress:

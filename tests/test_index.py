@@ -204,3 +204,20 @@ def test_corrupt_parent_cache_is_left_alone(make_tree):
     parent.write_text("garbage line\n")
     assert len(build_index(root / "src")) == 1
     assert parent.read_text() == "garbage line\n"
+
+
+def test_fifo_is_skipped(make_tree):
+    root = make_tree(TREE)
+    os.mkfifo(root / "src/pipe.adb")
+    assert len(build_index(root)) == 3
+
+
+def test_interrupt_names_the_file(make_tree, caplog):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+
+    def namer(path):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        build_index(root, namer=namer)
+    assert "interrupted while parsing a.ads" in caplog.text
