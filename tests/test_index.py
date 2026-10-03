@@ -2,7 +2,8 @@ import os
 
 import pytest
 
-from krunch_fzf.index import Entry, build_index, cache_path
+from krunch_fzf import index
+from krunch_fzf.index import Entry, SymbolEntry, build_index, build_symbol_index, cache_path
 from krunch_fzf.names import unit_name
 
 TREE = {
@@ -238,3 +239,47 @@ def test_line_survives_the_cache(make_tree):
     namer = CountingNamer()
     assert build_index(root, namer=namer)[0].line == 2
     assert namer.calls == []
+
+
+SYMBOL_TREE = {
+    "p.ads": "package P is\n   procedure Q;\nend P;\n",
+    "p.adb": "package body P is\n   procedure Q is\n      L : Integer;\n   begin\n      null;\n   end Q;\nend P;\n",
+}
+
+
+def test_symbol_index_package_level(make_tree):
+    root = make_tree(SYMBOL_TREE)
+    assert build_symbol_index(root, local=False) == [
+        SymbolEntry("p.adb", "P", "package", 1),
+        SymbolEntry("p.ads", "P", "package", 1),
+        SymbolEntry("p.adb", "P.Q", "procedure", 2),
+        SymbolEntry("p.ads", "P.Q", "procedure", 2),
+    ]
+
+
+def test_symbol_index_with_locals(make_tree):
+    root = make_tree(SYMBOL_TREE)
+    assert SymbolEntry("p.adb", "P.Q.L", "object", 3) in build_symbol_index(root, local=True)
+
+
+def test_symbol_caches_are_separate_and_reused(make_tree, monkeypatch):
+    root = make_tree(SYMBOL_TREE)
+    build_index(root)
+    build_symbol_index(root, local=False)
+    build_symbol_index(root, local=True)
+    assert cache_path(root).exists()
+    assert cache_path(root, "symbols").exists()
+    assert cache_path(root, "symbols-all").exists()
+    calls = []
+    monkeypatch.setattr(index, "symbols", lambda path, local: calls.append(path) or [])
+    assert len(build_symbol_index(root, local=False)) == 4
+    assert calls == []
+
+
+def test_file_without_symbols_is_not_parsed_again(make_tree, monkeypatch):
+    root = make_tree({"x.adb": "pragma No_Body;\n"})
+    assert build_symbol_index(root, local=False) == []
+    calls = []
+    monkeypatch.setattr(index, "symbols", lambda path, local: calls.append(path) or [])
+    build_symbol_index(root, local=False)
+    assert calls == []

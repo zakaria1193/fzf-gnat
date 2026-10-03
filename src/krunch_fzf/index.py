@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from krunch_fzf.names import unit_name
+from krunch_fzf.names import symbols, unit_name
 
 log = logging.getLogger(__name__)
 
@@ -20,13 +20,15 @@ SKIP_DIRS = {".git", "obj", "lib"}
 SKIP_DIR_SUFFIX = ".dekrunched"
 
 
-# mtime_ns, size, unit, kind, line
-Row = tuple[int, int, str, str, int]
+# What a cache keeps for one file: mtime_ns, size, and its records. A record
+# is a tuple of strings, such as (unit, kind, line) for the file index.
+Record = tuple[str, ...]
+Stored = tuple[int, int, list[Record]]
 
 
 @dataclass(frozen=True)
 class Entry:
-    """One line of the search list."""
+    """One line of the file search list."""
 
     relpath: str
     unit: str
@@ -34,11 +36,22 @@ class Entry:
     line: int = field(default=1, compare=False)
 
 
-def cache_path(root: Path) -> Path:
-    """Return the cache file for ``root``, the same for every spelling of it."""
+@dataclass(frozen=True)
+class SymbolEntry:
+    """One line of the symbol search list."""
+
+    relpath: str
+    name: str
+    kind: str
+    line: int
+
+
+def cache_path(root: Path, variant: str = "") -> Path:
+    """Return the cache file of ``variant`` for ``root``, the same for every spelling of it."""
     base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     key = hashlib.sha1(str(root.resolve()).encode()).hexdigest()
-    return base / "krunch-fzf" / f"{key}.tsv"
+    suffix = f".{variant}" if variant else ""
+    return base / "krunch-fzf" / f"{key}{suffix}.tsv"
 
 
 def _walk(root: Path):
@@ -76,31 +89,35 @@ def _walk(root: Path):
             yield rel
 
 
-def _read_cache(path: Path) -> dict[str, Row] | None:
+def _read_cache(path: Path) -> dict[str, Stored] | None:
+    # One line per record; a file without records keeps a line with only
+    # its path, mtime and size, so that it is not parsed again.
+    rows: dict[str, Stored] = {}
     try:
         with path.open(newline="") as f:
-            return {
-                rel: (int(mtime), int(size), unit, kind, int(line))
-                for rel, mtime, size, unit, kind, line in csv.reader(f, delimiter="\t")
-            }
+            for rel, mtime, size, *record in csv.reader(f, delimiter="\t"):
+                stored = rows.setdefault(rel, (int(mtime), int(size), []))
+                if record:
+                    stored[2].append(tuple(record))
     except (OSError, ValueError):
         return None
+    return rows
 
 
-def _find_store(root: Path) -> tuple[Path, str, dict[str, Row]]:
+def _find_store(root: Path, variant: str) -> tuple[Path, str, dict[str, Stored]]:
     """Return the nearest readable cache of ``root`` or an ancestor, root's path prefix in it, and its rows."""
     for tree in (root, *root.parents):
-        path = cache_path(tree)
+        path = cache_path(tree, variant)
         if tree != root and not path.exists():
             continue
         rows = _read_cache(path)
         if rows is not None:
             prefix = root.relative_to(tree).as_posix()
             return path, "" if prefix == "." else f"{prefix}/", rows
-    return cache_path(root), "", {}
+    return cache_path(root, variant), "", {}
 
 
-def _write_cache(path: Path, rows: dict[str, Row]) -> None:
+def _write_cache(path: Path, rows: dict[str, Stored]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A unique temp name, so that two runs on the same root never write the
     # same file; the last rename wins.
@@ -109,42 +126,30 @@ def _write_cache(path: Path, rows: dict[str, Row]) -> None:
     ) as f:
         try:
             writer = csv.writer(f, delimiter="\t", lineterminator="\n")
-            for rel, row in sorted(rows.items()):
-                writer.writerow([rel, *row])
+            for rel, (mtime, size, records) in sorted(rows.items()):
+                for record in records or [()]:
+                    writer.writerow([rel, mtime, size, *record])
         except BaseException:
             os.unlink(f.name)
             raise
     os.replace(f.name, path)
 
 
-def _parse(root: Path, rel: str, st: os.stat_result, namer) -> Row | None:
-    try:
-        found = namer(root / rel)
-    except OSError as e:
-        log.warning(f"skipping {rel}: {e.strerror}")
-        return None
-    if found is None:
-        log.warning(f"{rel}: no Ada unit found")
-        return (st.st_mtime_ns, st.st_size, "?", "body" if rel.endswith(".adb") else "spec", 1)
-    return (st.st_mtime_ns, st.st_size, found.name, found.kind, found.line)
+def _scan(root: Path, variant: str, rebuild: bool, progress, extract) -> dict[str, list[Record]]:
+    """Return the records of every Ada file under ``root``, calling ``extract(path)`` only for new or changed files.
 
-
-def build_index(
-    root: Path, rebuild: bool = False, namer=unit_name, progress=None
-) -> list[Entry]:
-    """Return the entries of ``root`` sorted by unit then path, parsing only new or changed files.
-
-    ``progress(done, total)`` is called before the first parse and after each
-    one, where ``total`` counts only the files that need parsing.
+    ``extract`` returns None to leave a file out. ``progress(done, total)`` is
+    called before the first parse and after each one, where ``total`` counts
+    only the files that need parsing.
     """
     root = root.resolve()
     # A tree inside an already indexed one shares its cache, so that moving
     # into a subdirectory does not mean parsing it all again.
-    cache, prefix, stored = _find_store(root)
+    cache, prefix, stored = _find_store(root, variant)
     old = {} if rebuild else {
         rel[len(prefix):]: row for rel, row in stored.items() if rel.startswith(prefix)
     }
-    rows = {}
+    rows: dict[str, Stored] = {}
     todo = []
     for rel in _walk(root):
         try:
@@ -167,12 +172,15 @@ def build_index(
     try:
         for done, (rel, st) in enumerate(todo, start=1):
             try:
-                row = _parse(root, rel, st, namer)
+                records = extract(root / rel)
             except KeyboardInterrupt:
                 log.error(f"interrupted while parsing {rel}")
                 raise
-            if row is not None:
-                rows[rel] = row
+            except OSError as e:
+                log.warning(f"skipping {rel}: {e.strerror}")
+                records = None
+            if records is not None:
+                rows[rel] = (st.st_mtime_ns, st.st_size, records)
             if progress:
                 progress(done, len(todo))
     finally:
@@ -180,7 +188,47 @@ def build_index(
         merged = {rel: row for rel, row in stored.items() if not rel.startswith(prefix)}
         merged.update((f"{prefix}{rel}", row) for rel, row in rows.items())
         _write_cache(cache, merged)
+    return {rel: records for rel, (_, _, records) in rows.items()}
+
+
+def build_index(
+    root: Path, rebuild: bool = False, namer=unit_name, progress=None
+) -> list[Entry]:
+    """Return the file entries of ``root`` sorted by unit then path; see ``_scan`` for caching and ``progress``."""
+
+    def extract(path: Path) -> list[Record]:
+        found = namer(path)
+        if found is None:
+            log.warning(f"{path.relative_to(root.resolve())}: no Ada unit found")
+            return [("?", "body" if path.suffix == ".adb" else "spec", "1")]
+        return [(found.name, found.kind, str(found.line))]
+
+    rows = _scan(root, "", rebuild, progress, extract)
     return sorted(
-        (Entry(rel, unit, kind, line) for rel, (_, _, unit, kind, line) in rows.items()),
+        (
+            Entry(rel, unit, kind, int(line))
+            for rel, records in rows.items()
+            for unit, kind, line in records
+        ),
         key=lambda e: (e.unit, e.relpath),
+    )
+
+
+def build_symbol_index(
+    root: Path, local: bool, rebuild: bool = False, progress=None
+) -> list[SymbolEntry]:
+    """Return the declarations under ``root``, with locals only if ``local``, sorted by name, path and line."""
+
+    def extract(path: Path) -> list[Record]:
+        return [(s.name, s.kind, str(s.line)) for s in symbols(path, local)]
+
+    variant = "symbols-all" if local else "symbols"
+    rows = _scan(root, variant, rebuild, progress, extract)
+    return sorted(
+        (
+            SymbolEntry(rel, name, kind, int(line))
+            for rel, records in rows.items()
+            for name, kind, line in records
+        ),
+        key=lambda e: (e.name, e.relpath, e.line),
     )
