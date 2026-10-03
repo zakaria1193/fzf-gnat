@@ -19,7 +19,8 @@ krunch-fzf --print ROOT          # write the index to stdout, no fzf
 ## Requirements
 
 - Python 3.10 or newer.
-- The `libadalang` wheel from PyPI, declared as a package dependency.
+- The `tree-sitter` and `tree-sitter-ada` wheels from PyPI, declared as
+  package dependencies. libadalang has no wheel on PyPI.
 - `fzf` on `PATH`. The tool exits with a clear error if it is missing.
 - `bat` is optional. The preview uses it when it is on `PATH`, and `cat`
   otherwise.
@@ -52,9 +53,9 @@ fzf searches all three fields. Lines are sorted by unit name, then by path.
 The package is `krunch_fzf`, in `src/krunch_fzf/`.
 
 - `names.py`: `unit_name(path) -> UnitName | None`. It parses one file with
-  libadalang, without a project file and without resolving `with` clauses.
+  tree-sitter-ada. It reads only that file.
   It returns the name and the kind. It returns `None` if the file has no
-  compilation unit, or if libadalang reports parse errors and gives no name.
+  compilation unit, or if the parser gives no valid name.
 - `index.py`: `build_index(root, rebuild=False) -> list[Entry]`. It walks the
   tree, reads and updates the cache, and calls `unit_name` only for new or
   changed files.
@@ -82,7 +83,7 @@ The package is `krunch_fzf`, in `src/krunch_fzf/`.
 
 ## Errors
 
-- A file that libadalang cannot name still gets a line, with unit `?`. The
+- A file that the parser cannot name still gets a line, with unit `?`. The
   tool logs one warning per such file to stderr.
 - A root that does not exist or is not a directory: exit with status 2 and a
   message.

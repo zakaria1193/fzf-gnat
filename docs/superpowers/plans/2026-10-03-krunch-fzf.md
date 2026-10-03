@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Parser change:** libadalang has no PyPI wheel, so Task 1 uses tree-sitter-ada instead. See the `Ruling:` lines in the ledger. Wherever this plan says libadalang, read tree-sitter-ada.
+
 **Goal:** A `krunch-fzf ROOT` command that fuzzy searches the Ada files of a tree by unit name and krunched file name, with a preview, and opens the selection in `$EDITOR`.
 
 **Architecture:** `names.py` asks libadalang for the unit name of one file. `index.py` walks the tree and keeps a per-root TSV cache so only changed files are parsed again. `cli.py` feeds the index to fzf, reads back the selection, and runs the editor.
@@ -730,7 +732,7 @@ Type part of a unit name (`strunb` or `Strings.Unb`). The right pane shows
 the file. Press Enter to open it in `$EDITOR`. Press Tab to select several
 files first.
 
-The first run on a tree parses every file with libadalang. Later runs parse
+The first run on a tree parses every file with tree-sitter-ada. Later runs parse
 only files that changed. Use `--rebuild` to parse everything again, and
 `--print` to write the list to stdout without fzf.
 ````
