@@ -116,14 +116,16 @@ def build_index(
 
     if todo and progress:
         progress(0, len(todo))
-    for done, (rel, st) in enumerate(todo, start=1):
-        row = _parse(root, rel, st, namer)
-        if row is not None:
-            rows[rel] = row
-        if progress:
-            progress(done, len(todo))
-
-    _write_cache(cache, rows)
+    try:
+        for done, (rel, st) in enumerate(todo, start=1):
+            row = _parse(root, rel, st, namer)
+            if row is not None:
+                rows[rel] = row
+            if progress:
+                progress(done, len(todo))
+    finally:
+        # Also on Ctrl-C, so that the next run resumes instead of starting over.
+        _write_cache(cache, rows)
     return sorted(
         (Entry(rel, unit, kind) for rel, (_, _, unit, kind) in rows.items()),
         key=lambda e: (e.unit, e.relpath),

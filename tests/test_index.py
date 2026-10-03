@@ -135,3 +135,20 @@ def test_progress_on_rebuild_covers_every_file(make_tree):
     calls = []
     build_index(root, rebuild=True, progress=lambda done, total: calls.append((done, total)))
     assert calls == [(0, 3), (1, 3), (2, 3), (3, 3)]
+
+
+def test_interrupt_keeps_parsed_files_in_cache(make_tree):
+    root = make_tree(TREE)
+
+    def namer(path):
+        if namer.calls:
+            raise KeyboardInterrupt
+        namer.calls += 1
+        return unit_name(path)
+
+    namer.calls = 0
+    with pytest.raises(KeyboardInterrupt):
+        build_index(root, namer=namer)
+    counting = CountingNamer()
+    build_index(root, namer=counting)
+    assert len(counting.calls) == 2

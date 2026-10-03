@@ -5,6 +5,7 @@ import logging
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,18 @@ def editor_argv(paths: list[str]) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Python keeps SIGINT ignored when the parent ignored it, which leaves
+    # Ctrl-C dead during a long parse.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        if sys.stderr.isatty():
+            sys.stderr.write("\r\x1b[K")
+        return 130
+
+
+def _main(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(
         prog="krunch-fzf",
         description="Fuzzy search Ada sources by unit name and krunched file name.",

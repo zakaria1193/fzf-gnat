@@ -1,3 +1,4 @@
+import signal
 import io
 import os
 
@@ -160,3 +161,24 @@ def test_verbose_shows_warnings(make_tree, capsys):
     root = make_tree({"x.adb": "pragma No_Body;\n"})
     cli.main(["-v", "--print", str(root)])
     assert "x.adb: no Ada unit found" in capsys.readouterr().err
+
+
+def test_ctrl_c_exits_130_quietly(make_tree, monkeypatch, capsys):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "build_index", interrupted)
+    assert cli.main(["--print", str(root)]) == 130
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_ctrl_c_works_even_if_parent_ignored_it(make_tree, monkeypatch):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+    old = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        cli.main(["--print", str(root)])
+        assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+    finally:
+        signal.signal(signal.SIGINT, old)
