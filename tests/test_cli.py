@@ -13,15 +13,23 @@ def cache_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))
 
 
-def test_format_line():
-    entry = Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec")
-    assert cli.format_line(entry) == "Ada.Strings.Unbounded\tspec\tlibgnat/a-strunb.ads"
+def test_format_lines_aligns_columns(tmp_path):
+    entries = [
+        Entry("libgnat/a-strunb.ads", "Ada.Strings.Unbounded", "spec"),
+        Entry("src/s-textio__pl011.adb", "System.Text_IO", "body"),
+    ]
+    assert cli.format_lines(entries, tmp_path) == [
+        f"a-strunb.ads       \tspec\tAda.Strings.Unbounded\t{tmp_path}/libgnat/a-strunb.ads",
+        f"s-textio__pl011.adb\tbody\tSystem.Text_IO       \t{tmp_path}/src/s-textio__pl011.adb",
+    ]
 
 
 def test_print_writes_index(make_tree, capsys):
     root = make_tree({"src/s-textio.ads": "package System.Text_IO is\nend System.Text_IO;\n"})
     assert cli.main(["--print", str(root)]) == 0
-    assert capsys.readouterr().out == "System.Text_IO\tspec\tsrc/s-textio.ads\n"
+    assert capsys.readouterr().out == (
+        f"s-textio.ads\tspec\tSystem.Text_IO\t{root.resolve()}/src/s-textio.ads\n"
+    )
 
 
 def test_missing_root_exits_2(tmp_path, capsys):
@@ -37,16 +45,17 @@ def test_missing_fzf_exits_2(make_tree, monkeypatch, capsys):
 
 
 def test_fzf_argv_searches_all_fields():
-    argv = cli.fzf_argv("cat {3}")
+    argv = cli.fzf_argv("cat {4}")
     assert argv[0] == "fzf"
     assert "--multi" in argv
     assert argv[argv.index("--delimiter") + 1] == "\t"
-    assert argv[argv.index("--preview") + 1] == "cat {3}"
+    assert argv[argv.index("--preview") + 1] == "cat {4}"
+    assert argv[argv.index("--preview-window") + 1].startswith("down")
 
 
 def test_preview_falls_back_to_cat(monkeypatch):
     monkeypatch.setattr(cli.shutil, "which", lambda name: None)
-    assert cli.preview_command() == "cat {3}"
+    assert cli.preview_command() == "cat {4}"
 
 
 def test_editor_with_arguments(monkeypatch):
@@ -76,7 +85,7 @@ def test_enter_opens_selection(make_tree, monkeypatch):
     root = make_tree({"a.ads": "package A is\nend A;\n"})
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setenv("EDITOR", "vi")
-    run = FakeRun(0, "A\tspec\ta.ads\n")
+    run = FakeRun(0, f"a.ads\tspec\tA\t{root.resolve()}/a.ads\n")
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 0
     assert run.calls[-1] == ["vi", str(root.resolve() / "a.ads")]
@@ -99,7 +108,7 @@ def test_missing_editor_exits_2(make_tree, monkeypatch, capsys):
     def run(argv, **kwargs):
         if argv[0] != "fzf":
             raise FileNotFoundError(argv[0])
-        return cli.subprocess.CompletedProcess(argv, 0, stdout="A\tspec\ta.ads\n")
+        return cli.subprocess.CompletedProcess(argv, 0, stdout=f"a.ads\tspec\tA\t{root.resolve()}/a.ads\n")
 
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 2

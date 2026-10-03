@@ -29,8 +29,16 @@ class ProgressBar:
         self.out.flush()
 
 
-def format_line(entry: Entry) -> str:
-    return f"{entry.unit}\t{entry.kind}\t{entry.relpath}"
+def format_lines(entries: list[Entry], root: Path) -> list[str]:
+    """Return one fzf line per entry: file name, kind, unit and absolute path, padded into columns."""
+    names = [Path(e.relpath).name for e in entries]
+    name_width = max(map(len, names), default=0)
+    kind_width = max((len(e.kind) for e in entries), default=0)
+    unit_width = max((len(e.unit) for e in entries), default=0)
+    return [
+        f"{name:<{name_width}}\t{e.kind:<{kind_width}}\t{e.unit:<{unit_width}}\t{root / e.relpath}"
+        for name, e in zip(names, entries)
+    ]
 
 
 def preview_command() -> str:
@@ -38,8 +46,8 @@ def preview_command() -> str:
     # Debian and Ubuntu install bat as batcat.
     for bat in ("bat", "batcat"):
         if shutil.which(bat):
-            return f"{bat} --color=always --style=numbers {{3}}"
-    return "cat {3}"
+            return f"{bat} --color=always --style=numbers {{4}}"
+    return "cat {4}"
 
 
 def fzf_argv(preview: str) -> list[str]:
@@ -49,7 +57,7 @@ def fzf_argv(preview: str) -> list[str]:
         "--delimiter", "\t",
         "--tabstop", "4",
         "--preview", preview,
-        "--preview-window", "right,60%",
+        "--preview-window", "down,60%",
     ]
 
 
@@ -99,7 +107,7 @@ def _main(argv: list[str] | None) -> int:
 
     progress = ProgressBar(sys.stderr) if tty else None
     entries = build_index(root, rebuild=args.rebuild, progress=progress)
-    lines = "".join(f"{format_line(e)}\n" for e in entries)
+    lines = "".join(f"{line}\n" for line in format_lines(entries, root))
     if args.print:
         try:
             sys.stdout.write(lines)
@@ -110,14 +118,13 @@ def _main(argv: list[str] | None) -> int:
             os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return 0
 
-    # fzf runs in the root so that the preview can use the relative path field.
     result = subprocess.run(
         fzf_argv(preview_command()), input=lines, stdout=subprocess.PIPE, text=True, cwd=root
     )
-    selected = [line.split("\t")[2] for line in result.stdout.splitlines() if line]
+    selected = [line.split("\t")[3] for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or not selected:
         return 0
-    editor = editor_argv([str(root / rel) for rel in selected])
+    editor = editor_argv(selected)
     try:
         subprocess.run(editor)
     except FileNotFoundError:
