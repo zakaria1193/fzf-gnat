@@ -100,10 +100,19 @@ def test_corrupt_cache_is_rebuilt(make_tree):
     assert len(build_index(root)) == 3
 
 
-def test_symlinked_dir_is_not_followed(make_tree):
+def test_symlink_loop_does_not_hang(make_tree):
     root = make_tree(TREE)
     os.symlink(root, root / "loop")
+    os.symlink(root / "src", root / "src/again")
     assert len(build_index(root)) == 3
+
+
+def test_symlinked_dir_is_followed(make_tree, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "o.ads").write_text("package O is\nend O;\n")
+    root = make_tree(TREE)
+    os.symlink(outside, root / "linked")
+    assert Entry("linked/o.ads", "O", "spec") in build_index(root)
 
 
 def test_cache_write_survives_another_writers_temp_file(make_tree):

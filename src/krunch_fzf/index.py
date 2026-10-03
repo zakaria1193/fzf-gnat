@@ -42,9 +42,29 @@ def cache_path(root: Path) -> Path:
 
 
 def _walk(root: Path):
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+    # Symlinked directories are followed, but each real directory is entered
+    # only once, so a link loop ends and a linked copy is not listed twice.
+    seen = set()
+
+    def first_visit(path: str) -> bool:
+        try:
+            st = os.stat(path)
+        except OSError:
+            return False
+        key = (st.st_dev, st.st_ino)
+        if key in seen:
+            return False
+        seen.add(key)
+        return True
+
+    first_visit(root)
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
         dirnames[:] = [
-            d for d in dirnames if d not in SKIP_DIRS and not d.endswith(SKIP_DIR_SUFFIX)
+            d
+            for d in dirnames
+            if d not in SKIP_DIRS
+            and not d.endswith(SKIP_DIR_SUFFIX)
+            and first_visit(os.path.join(dirpath, d))
         ]
         for name in filenames:
             if not name.endswith((".ads", ".adb")):

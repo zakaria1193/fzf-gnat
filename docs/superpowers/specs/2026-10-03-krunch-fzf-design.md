@@ -68,7 +68,8 @@ The package is `krunch_fzf`, in `src/krunch_fzf/`.
 - Skip `.git`, and skip any directory named `obj` or `lib`.
 - Skip any directory whose name ends in `.dekrunched`. These are views that
   dekrunch generates, and they would list every file twice.
-- Do not follow directory symlinks, so a symlink loop cannot hang the walk.
+- Follow directory symlinks, but enter each real directory only once, so a
+  symlink loop ends and a linked copy is not listed twice.
 
 ## Cache
 
