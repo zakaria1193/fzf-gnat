@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from krunch_fzf.index import Entry, build_index
+from krunch_fzf.index import Entry, SymbolEntry, build_index, build_symbol_index
 
 
 class ProgressBar:
@@ -29,16 +29,43 @@ class ProgressBar:
         self.out.flush()
 
 
-def format_lines(entries: list[Entry], root: Path) -> list[str]:
-    """Return one fzf line per entry: file name, kind, unit, absolute path and unit line, padded into columns."""
-    names = [Path(e.relpath).name for e in entries]
-    name_width = max(map(len, names), default=0)
-    kind_width = max((len(e.kind) for e in entries), default=0)
-    unit_width = max((len(e.unit) for e in entries), default=0)
+PATH_WIDTH = 50
+
+
+def shorten(path: str, width: int) -> str:
+    """Return ``path``, cut in the middle with ``...`` if it is longer than ``width``."""
+    if len(path) <= width:
+        return path
+    # Keep more of the end, which holds the directory and file names.
+    keep = width - 3
+    head = keep // 3
+    return f"{path[:head]}...{path[len(path) - (keep - head):]}"
+
+
+def _columns(rows: list[tuple[str, str, str, Path, int]]) -> list[str]:
+    # The shown path has a fixed width so that a deep tree cannot push the
+    # columns around. The full path and the line follow, hidden, for the
+    # preview and the editor.
+    widths = [max((len(row[i]) for row in rows), default=0) for i in range(3)]
     return [
-        f"{name:<{name_width}}\t{e.kind:<{kind_width}}\t{e.unit:<{unit_width}}\t{root / e.relpath}\t{e.line}"
-        for name, e in zip(names, entries)
+        f"{a:<{widths[0]}}\t{b:<{widths[1]}}\t{c:<{widths[2]}}\t"
+        f"{shorten(str(path), PATH_WIDTH):<{PATH_WIDTH}}\t{path}\t{line}"
+        for a, b, c, path, line in rows
     ]
+
+
+def format_lines(entries: list[Entry], root: Path) -> list[str]:
+    """Return one fzf line per entry: file name, kind, unit and shortened path, then the hidden full path and unit line."""
+    return _columns(
+        [(Path(e.relpath).name, e.kind, e.unit, root / e.relpath, e.line) for e in entries]
+    )
+
+
+def format_symbol_lines(entries: list[SymbolEntry], root: Path) -> list[str]:
+    """Return one fzf line per symbol: name, kind, file name and shortened path, then the hidden full path and line."""
+    return _columns(
+        [(e.name, e.kind, Path(e.relpath).name, root / e.relpath, e.line) for e in entries]
+    )
 
 
 def preview_command() -> str:
@@ -46,20 +73,22 @@ def preview_command() -> str:
     # Debian and Ubuntu install bat as batcat.
     for bat in ("bat", "batcat"):
         if shutil.which(bat):
-            return f"{bat} --color=always --style=numbers {{4}} --highlight-line {{5}}"
-    return "cat {4}"
+            return f"{bat} --color=always --style=numbers {{5}} --highlight-line {{6}}"
+    return "cat {5}"
 
 
-def fzf_argv(preview: str) -> list[str]:
+def fzf_argv(preview: str, query: str = "") -> list[str]:
     return [
         "fzf",
         "--multi",
         "--delimiter", "\t",
         "--tabstop", "4",
         "--preview", preview,
-        # Field 5, the unit's line, stays hidden and centres the preview.
+        # Fields 5 and 6, the full path and the line, stay hidden; the line
+        # centres the preview.
         "--with-nth", "1..4",
-        "--preview-window", "up,60%,+{5}/2",
+        "--preview-window", "up,60%,+{6}/2",
+        "--query", query,
     ]
 
 
@@ -96,12 +125,26 @@ def main(argv: list[str] | None = None) -> int:
 def _main(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(
         prog="krunch-fzf",
-        description="Fuzzy search Ada sources by unit name and krunched file name.",
+        description="Fuzzy search Ada sources by unit name and krunched file name, or by declaration.",
     )
     parser.add_argument("root", nargs="?", default=".", help="tree to search (default: .)")
     parser.add_argument("--rebuild", action="store_true", help="ignore the cache")
     parser.add_argument("--print", action="store_true", help="print the index, do not run fzf")
     parser.add_argument("-v", "--verbose", action="store_true", help="show warnings")
+    parser.add_argument("-q", "--query", default="", help="start fzf with this query")
+    symbols = parser.add_mutually_exclusive_group()
+    symbols.add_argument(
+        "-s", dest="symbols", action="store_const", const="package",
+        help="search declarations at package level instead of files",
+    )
+    symbols.add_argument(
+        "-ss", dest="symbols", action="store_const", const="spec",
+        help="search declarations at package level in specs only",
+    )
+    symbols.add_argument(
+        "-sa", dest="symbols", action="store_const", const="all",
+        help="search all declarations, including locals",
+    )
     args = parser.parse_args(argv)
     tty = sys.stderr.isatty()
     # On a terminal, a warning first erases the progress bar it would
@@ -122,8 +165,16 @@ def _main(argv: list[str] | None) -> int:
         return 2
 
     progress = ProgressBar(sys.stderr) if tty else None
-    entries = build_index(root, rebuild=args.rebuild, progress=progress)
-    lines = "".join(f"{line}\n" for line in format_lines(entries, root))
+    if args.symbols:
+        found = build_symbol_index(
+            root, local=args.symbols == "all", rebuild=args.rebuild, progress=progress
+        )
+        if args.symbols == "spec":
+            found = [e for e in found if e.relpath.endswith(".ads")]
+        formatted = format_symbol_lines(found, root)
+    else:
+        formatted = format_lines(build_index(root, rebuild=args.rebuild, progress=progress), root)
+    lines = "".join(f"{line}\n" for line in formatted)
     if args.print:
         try:
             sys.stdout.write(lines)
@@ -135,10 +186,10 @@ def _main(argv: list[str] | None) -> int:
         return 0
 
     result = subprocess.run(
-        fzf_argv(preview_command()), input=lines, stdout=subprocess.PIPE, text=True, cwd=root
+        fzf_argv(preview_command(), args.query), input=lines, stdout=subprocess.PIPE, text=True, cwd=root
     )
     selected = [
-        (fields[3], int(fields[4]))
+        (fields[4], int(fields[5]))
         for fields in (line.split("\t") for line in result.stdout.splitlines() if line)
     ]
     if result.returncode != 0 or not selected:
