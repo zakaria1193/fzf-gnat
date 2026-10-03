@@ -104,3 +104,12 @@ def test_symlinked_dir_is_not_followed(make_tree):
     root = make_tree(TREE)
     os.symlink(root, root / "loop")
     assert len(build_index(root)) == 3
+
+
+def test_cache_write_survives_another_writers_temp_file(make_tree):
+    root = make_tree(TREE)
+    path = cache_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Stands in for the temp file of a concurrent run on the same root.
+    path.with_suffix(".tmp").mkdir()
+    assert len(build_index(root)) == 3

@@ -61,7 +61,13 @@ def main(argv: list[str] | None = None) -> int:
 
     lines = "".join(f"{format_line(e)}\n" for e in build_index(root, rebuild=args.rebuild))
     if args.print:
-        sys.stdout.write(lines)
+        try:
+            sys.stdout.write(lines)
+            sys.stdout.flush()
+        except BrokenPipeError:
+            # The reader quit early, as `head` does. Point stdout at devnull
+            # so that the flush at interpreter exit does not fail again.
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return 0
 
     # fzf runs in the root so that the preview can use the relative path field.
@@ -71,5 +77,10 @@ def main(argv: list[str] | None = None) -> int:
     selected = [line.split("\t")[2] for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or not selected:
         return 0
-    subprocess.run(editor_argv([str(root / rel) for rel in selected]))
+    editor = editor_argv([str(root / rel) for rel in selected])
+    try:
+        subprocess.run(editor)
+    except FileNotFoundError:
+        print(f"krunch-fzf: editor not found: {editor[0]}", file=sys.stderr)
+        return 2
     return 0

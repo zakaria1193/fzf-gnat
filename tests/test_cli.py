@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from krunch_fzf import cli
@@ -85,3 +87,38 @@ def test_escape_opens_nothing(make_tree, monkeypatch):
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli.main([str(root)]) == 0
     assert len(run.calls) == 1
+
+
+def test_missing_editor_exits_2(make_tree, monkeypatch, capsys):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setenv("EDITOR", "no-such-editor")
+
+    def run(argv, **kwargs):
+        if argv[0] != "fzf":
+            raise FileNotFoundError(argv[0])
+        return cli.subprocess.CompletedProcess(argv, 0, stdout="A\tspec\ta.ads\n")
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    assert cli.main([str(root)]) == 2
+    assert "no-such-editor" in capsys.readouterr().err
+
+
+def test_print_into_closed_pipe(make_tree, monkeypatch):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+
+    class ClosedPipe:
+        def __init__(self):
+            self.fd = os.open(os.devnull, os.O_WRONLY)
+
+        def write(self, text):
+            raise BrokenPipeError
+
+        def flush(self):
+            pass
+
+        def fileno(self):
+            return self.fd
+
+    monkeypatch.setattr(cli.sys, "stdout", ClosedPipe())
+    assert cli.main(["--print", str(root)]) == 0

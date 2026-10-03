@@ -4,6 +4,7 @@ import csv
 import hashlib
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,12 +57,19 @@ def _read_cache(path: Path) -> dict[str, tuple[int, int, str, str]]:
 
 def _write_cache(path: Path, rows: dict[str, tuple[int, int, str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    with tmp.open("w", newline="") as f:
-        writer = csv.writer(f, delimiter="\t", lineterminator="\n")
-        for rel, row in sorted(rows.items()):
-            writer.writerow([rel, *row])
-    tmp.replace(path)
+    # A unique temp name, so that two runs on the same root never write the
+    # same file; the last rename wins.
+    with tempfile.NamedTemporaryFile(
+        "w", newline="", dir=path.parent, suffix=".tmp", delete=False
+    ) as f:
+        try:
+            writer = csv.writer(f, delimiter="\t", lineterminator="\n")
+            for rel, row in sorted(rows.items()):
+                writer.writerow([rel, *row])
+        except BaseException:
+            os.unlink(f.name)
+            raise
+    os.replace(f.name, path)
 
 
 def build_index(root: Path, rebuild: bool = False, namer=unit_name) -> list[Entry]:
