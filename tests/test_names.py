@@ -43,6 +43,18 @@ CASES = {
         "with G;\npackage X.Inst is new G (Integer);\n",
         UnitName("X.Inst", "spec"),
     ),
+    "a-calclo.adb": (
+        "with X;\nseparate (Ada.Calendar)\n--  note\nfunction Clock return Time is\nbegin\n   return 0;\nend Clock;\n",
+        UnitName("Ada.Calendar.Clock", "subunit"),
+    ),
+    "directio.ads": (
+        "with Ada.Direct_IO;\ngeneric package Direct_IO renames Ada.Direct_IO;\n",
+        UnitName("Direct_IO", "spec"),
+    ),
+    "a-ren.ads": (
+        "with Ada.Text_IO;\npackage A.Ren renames Ada.Text_IO;\n",
+        UnitName("A.Ren", "spec"),
+    ),
 }
 
 

@@ -32,9 +32,10 @@ def _text(node: Node) -> str:
 
 
 def _declared_name(node: Node) -> str | None:
-    name = node.child_by_field_name("name")
-    if name is not None:
-        return _text(name)
+    for field in ("name", "defining_program_unit_name"):
+        name = node.child_by_field_name(field)
+        if name is not None:
+            return _text(name)
     # Generics and subprograms keep the name one level down, in the wrapped
     # package_declaration or in the *_specification.
     for child in node.named_children:
@@ -62,7 +63,9 @@ def unit_name(path: Path) -> UnitName | None:
 def _unit_name(item: Node) -> UnitName | None:
     if item.type == "subunit":
         parent = item.child_by_field_name("parent_unit_name")
-        body = next((c for c in item.named_children if c != parent), None)
+        body = next(
+            (c for c in item.named_children if c != parent and c.type != "comment"), None
+        )
         inner = _declared_name(body) if body is not None else None
         if parent is None or inner is None:
             return None
