@@ -12,6 +12,22 @@ from pathlib import Path
 from krunch_fzf.index import Entry, build_index
 
 
+class ProgressBar:
+    """Draw a one-line progress bar on a terminal, and erase it when done."""
+
+    def __init__(self, out, width: int = 40):
+        self.out = out
+        self.width = width
+
+    def __call__(self, done: int, total: int) -> None:
+        filled = self.width * done // total
+        bar = "#" * filled + " " * (self.width - filled)
+        self.out.write(f"\r[{bar}] {done:4}/{total} ")
+        if done == total:
+            self.out.write("\r\x1b[K")
+        self.out.flush()
+
+
 def format_line(entry: Entry) -> str:
     return f"{entry.unit}\t{entry.kind}\t{entry.relpath}"
 
@@ -49,7 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rebuild", action="store_true", help="ignore the cache")
     parser.add_argument("--print", action="store_true", help="print the index, do not run fzf")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.WARNING, format="krunch-fzf: %(message)s")
+    tty = sys.stderr.isatty()
+    # On a terminal, a warning first erases the progress bar it would
+    # otherwise be printed over.
+    erase = "\r\x1b[K" if tty else ""
+    logging.basicConfig(level=logging.WARNING, format=f"{erase}krunch-fzf: %(message)s")
 
     root = Path(args.root).resolve()
     if not root.is_dir():
@@ -59,7 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         print("krunch-fzf: fzf not found on PATH", file=sys.stderr)
         return 2
 
-    lines = "".join(f"{format_line(e)}\n" for e in build_index(root, rebuild=args.rebuild))
+    progress = ProgressBar(sys.stderr) if tty else None
+    entries = build_index(root, rebuild=args.rebuild, progress=progress)
+    lines = "".join(f"{format_line(e)}\n" for e in entries)
     if args.print:
         try:
             sys.stdout.write(lines)

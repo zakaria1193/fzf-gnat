@@ -119,3 +119,19 @@ def test_cache_write_survives_another_writers_temp_file(make_tree):
 def test_dekrunched_views_are_skipped(make_tree, mount):
     root = make_tree({**TREE, f"{mount}/Ada/Strings/Unbounded.ads": TREE["libgnat/a-strunb.ads"]})
     assert len(build_index(root)) == 3
+
+
+def test_progress_counts_parsed_files_only(make_tree):
+    root = make_tree(TREE)
+    build_index(root)
+    (root / "src/s-textio.ads").write_text("package System.Text_IO_2 is\nend System.Text_IO_2;\n")
+    calls = []
+    build_index(root, progress=lambda done, total: calls.append((done, total)))
+    assert calls == [(0, 1), (1, 1)]
+
+
+def test_progress_on_rebuild_covers_every_file(make_tree):
+    root = make_tree(TREE)
+    calls = []
+    build_index(root, rebuild=True, progress=lambda done, total: calls.append((done, total)))
+    assert calls == [(0, 3), (1, 3), (2, 3), (3, 3)]

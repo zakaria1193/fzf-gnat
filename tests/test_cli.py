@@ -1,3 +1,4 @@
+import io
 import os
 
 import pytest
@@ -122,3 +123,28 @@ def test_print_into_closed_pipe(make_tree, monkeypatch):
 
     monkeypatch.setattr(cli.sys, "stdout", ClosedPipe())
     assert cli.main(["--print", str(root)]) == 0
+
+
+def test_progress_bar_draws_and_clears():
+    out = io.StringIO()
+    bar = cli.ProgressBar(out, width=10)
+    bar(0, 4)
+    bar(2, 4)
+    bar(4, 4)
+    text = out.getvalue()
+    assert "\r[#####     ]    2/4 " in text
+    assert text.endswith("\r\x1b[K")
+
+
+def test_no_progress_bar_without_a_terminal(make_tree, monkeypatch):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+    seen = {}
+
+    def fake_build_index(root, rebuild=False, progress=None):
+        seen["progress"] = progress
+        return []
+
+    monkeypatch.setattr(cli, "build_index", fake_build_index)
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
+    cli.main(["--print", str(root)])
+    assert seen["progress"] is None

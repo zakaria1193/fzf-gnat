@@ -78,28 +78,51 @@ def _write_cache(path: Path, rows: dict[str, tuple[int, int, str, str]]) -> None
     os.replace(f.name, path)
 
 
-def build_index(root: Path, rebuild: bool = False, namer=unit_name) -> list[Entry]:
-    """Return the entries of ``root`` sorted by unit then path, parsing only new or changed files."""
+def _parse(root: Path, rel: str, st: os.stat_result, namer) -> tuple[int, int, str, str] | None:
+    try:
+        found = namer(root / rel)
+    except OSError as e:
+        log.warning(f"skipping {rel}: {e.strerror}")
+        return None
+    if found is None:
+        log.warning(f"{rel}: no Ada unit found")
+        return (st.st_mtime_ns, st.st_size, "?", "body" if rel.endswith(".adb") else "spec")
+    return (st.st_mtime_ns, st.st_size, found.name, found.kind)
+
+
+def build_index(
+    root: Path, rebuild: bool = False, namer=unit_name, progress=None
+) -> list[Entry]:
+    """Return the entries of ``root`` sorted by unit then path, parsing only new or changed files.
+
+    ``progress(done, total)`` is called before the first parse and after each
+    one, where ``total`` counts only the files that need parsing.
+    """
     cache = cache_path(root)
     old = {} if rebuild else _read_cache(cache)
     rows = {}
+    todo = []
     for rel in _walk(root):
         try:
             st = (root / rel).stat()
-            hit = old.get(rel)
-            if hit and hit[:2] == (st.st_mtime_ns, st.st_size):
-                rows[rel] = hit
-                continue
-            found = namer(root / rel)
         except OSError as e:
             log.warning(f"skipping {rel}: {e.strerror}")
             continue
-        if found is None:
-            log.warning(f"{rel}: no Ada unit found")
-            unit, kind = "?", "body" if rel.endswith(".adb") else "spec"
+        hit = old.get(rel)
+        if hit and hit[:2] == (st.st_mtime_ns, st.st_size):
+            rows[rel] = hit
         else:
-            unit, kind = found.name, found.kind
-        rows[rel] = (st.st_mtime_ns, st.st_size, unit, kind)
+            todo.append((rel, st))
+
+    if todo and progress:
+        progress(0, len(todo))
+    for done, (rel, st) in enumerate(todo, start=1):
+        row = _parse(root, rel, st, namer)
+        if row is not None:
+            rows[rel] = row
+        if progress:
+            progress(done, len(todo))
+
     _write_cache(cache, rows)
     return sorted(
         (Entry(rel, unit, kind) for rel, (_, _, unit, kind) in rows.items()),
