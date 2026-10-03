@@ -50,7 +50,7 @@ def test_fzf_argv_searches_all_fields():
     assert "--multi" in argv
     assert argv[argv.index("--delimiter") + 1] == "\t"
     assert argv[argv.index("--preview") + 1] == "cat {4}"
-    assert argv[argv.index("--preview-window") + 1].startswith("down")
+    assert argv[argv.index("--preview-window") + 1].startswith("up")
 
 
 def test_preview_falls_back_to_cat(monkeypatch):

@@ -19,7 +19,7 @@ krunch-fzf ~/work/toolchain/gnat
 
 Each line shows the file name, its kind (spec, body or subunit), the unit
 name and the full path. Type part of any of them (`strunb` or `Strings.Unb`).
-The pane below the list shows the file. Press Enter to open it in `$EDITOR`. Press Tab to select several
+The pane above the list shows the file. Press Enter to open it in `$EDITOR`. Press Tab to select several
 files first.
 
 The first run on a tree parses every file with tree-sitter-ada. Later runs

@@ -57,7 +57,7 @@ def fzf_argv(preview: str) -> list[str]:
         "--delimiter", "\t",
         "--tabstop", "4",
         "--preview", preview,
-        "--preview-window", "down,60%",
+        "--preview-window", "up,60%",
     ]
 
 
