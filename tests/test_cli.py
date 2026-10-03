@@ -279,3 +279,12 @@ def test_query_prefills_fzf(make_tree, monkeypatch):
     cli.main(["-q", "System", str(root)])
     argv = run.calls[0]
     assert argv[argv.index("--query") + 1] == "System"
+
+
+def test_fzf_output_is_ignored_when_it_fails(make_tree, monkeypatch):
+    root = make_tree({"a.ads": "package A is\nend A;\n"})
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    run = FakeRun(130, "not a line of ours\n")
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    assert cli.main([str(root)]) == 0
+    assert len(run.calls) == 1

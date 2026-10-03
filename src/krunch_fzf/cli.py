@@ -188,11 +188,14 @@ def _main(argv: list[str] | None) -> int:
     result = subprocess.run(
         fzf_argv(preview_command(), args.query), input=lines, stdout=subprocess.PIPE, text=True, cwd=root
     )
+    if result.returncode != 0:
+        return 0
     selected = [
         (fields[4], int(fields[5]))
-        for fields in (line.split("\t") for line in result.stdout.splitlines() if line)
+        for fields in (line.split("\t") for line in result.stdout.splitlines())
+        if len(fields) == 6
     ]
-    if result.returncode != 0 or not selected:
+    if not selected:
         return 0
     editor = editor_argv(selected)
     try:
