@@ -113,3 +113,9 @@ def test_cache_write_survives_another_writers_temp_file(make_tree):
     # Stands in for the temp file of a concurrent run on the same root.
     path.with_suffix(".tmp").mkdir()
     assert len(build_index(root)) == 3
+
+
+@pytest.mark.parametrize("mount", [".dekrunched", "gnat.dekrunched"])
+def test_dekrunched_views_are_skipped(make_tree, mount):
+    root = make_tree({**TREE, f"{mount}/Ada/Strings/Unbounded.ads": TREE["libgnat/a-strunb.ads"]})
+    assert len(build_index(root)) == 3

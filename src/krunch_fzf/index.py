@@ -14,6 +14,10 @@ log = logging.getLogger(__name__)
 
 SKIP_DIRS = {".git", "obj", "lib"}
 
+# dekrunch builds these views of a tree, with unit-named links back to the
+# sources, so indexing them would list every file twice.
+SKIP_DIR_SUFFIX = ".dekrunched"
+
 
 @dataclass(frozen=True)
 class Entry:
@@ -33,7 +37,9 @@ def cache_path(root: Path) -> Path:
 
 def _walk(root: Path):
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [
+            d for d in dirnames if d not in SKIP_DIRS and not d.endswith(SKIP_DIR_SUFFIX)
+        ]
         for name in filenames:
             if not name.endswith((".ads", ".adb")):
                 continue
