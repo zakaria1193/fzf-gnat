@@ -148,3 +148,15 @@ def test_no_progress_bar_without_a_terminal(make_tree, monkeypatch):
     monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: False)
     cli.main(["--print", str(root)])
     assert seen["progress"] is None
+
+
+def test_warnings_hidden_by_default(make_tree, capsys):
+    root = make_tree({"x.adb": "pragma No_Body;\n"})
+    cli.main(["--print", str(root)])
+    assert "no Ada unit" not in capsys.readouterr().err
+
+
+def test_verbose_shows_warnings(make_tree, capsys):
+    root = make_tree({"x.adb": "pragma No_Body;\n"})
+    cli.main(["-v", "--print", str(root)])
+    assert "x.adb: no Ada unit found" in capsys.readouterr().err

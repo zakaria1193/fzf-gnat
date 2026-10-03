@@ -23,6 +23,7 @@ files first.
 
 The first run on a tree parses every file with tree-sitter-ada. Later runs
 parse only files that changed. Use `--rebuild` to parse everything again, and
-`--print` to write the list to stdout without fzf.
+`--print` to write the list to stdout without fzf. Warnings, such as files
+with no unit, only show with `-v`.
 
 A file that holds only `pragma No_Body;` has no unit, so it shows as `?`.

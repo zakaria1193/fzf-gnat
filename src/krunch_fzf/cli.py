@@ -64,12 +64,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("root", nargs="?", default=".", help="tree to search (default: .)")
     parser.add_argument("--rebuild", action="store_true", help="ignore the cache")
     parser.add_argument("--print", action="store_true", help="print the index, do not run fzf")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show warnings")
     args = parser.parse_args(argv)
     tty = sys.stderr.isatty()
     # On a terminal, a warning first erases the progress bar it would
     # otherwise be printed over.
     erase = "\r\x1b[K" if tty else ""
-    logging.basicConfig(level=logging.WARNING, format=f"{erase}krunch-fzf: %(message)s")
+    logging.basicConfig(
+        level=logging.WARNING if args.verbose else logging.ERROR,
+        format=f"{erase}krunch-fzf: %(message)s",
+        force=True,
+    )
 
     root = Path(args.root).resolve()
     if not root.is_dir():
