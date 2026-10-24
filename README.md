@@ -24,7 +24,7 @@ grep -rl 'package Ada\.Strings\.Unbounded' gnat/libgnat
 
 Then open the matching file and search for `Append`.
 
-With fzf-gnat, search the Ada declaration directly:
+With fzf-gnat, search the Ada declaration directly. `-ss` restricts the search to package-level declarations in specs:
 
 ```bash
 fzf-gnat -ss -q Ada.Strings.Unbounded.Append gnat
