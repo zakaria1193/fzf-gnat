@@ -4,31 +4,74 @@ Search Ada source trees by unit name, file name, or declaration with fzf.
 Find `Ada.Strings.Unbounded` even when GNAT names its source file `a-strunb.ads`.
 Preview the source, then open your selection in `$EDITOR`.
 
+## Examples
+
+Run these commands from an Ada source tree, or append the directory you want to search.
+
+### Find a unit by its Ada name
+
+You know the unit is `Ada.Strings.Unbounded`, but its file is named `a-strunb.ads`:
+
+```bash
+fzf-gnat -q Ada.Strings.Unbounded
+```
+
+The list shows the unit name beside the file name, so either spelling works:
+
+```bash
+fzf-gnat -q strunb
+```
+
+### Find a declaration without knowing its file
+
+Search for `Append` in package specs:
+
+```bash
+fzf-gnat -ss -q Ada.Strings.Unbounded.Append
+```
+
+Preview each declaration, then press Enter to open it in your editor.
+The editor starts at the declaration when it supports line arguments.
+Use `-s` instead of `-ss` to include declarations in package bodies.
+
+### Find local declarations
+
+Include local variables and nested subprograms when searching for a name such as `Count`:
+
+```bash
+fzf-gnat -sa -q Count
+```
+
+### Search another source tree
+
+Pass a directory to search without changing your working directory:
+
+```bash
+fzf-gnat -ss -q Ada.Strings.Unbounded.Append ~/work/toolchain/gnat
+```
+
 ## Install
 
 Requires Python 3.10 or later and `fzf` on your `PATH`.
-On Debian or Ubuntu, install the prerequisites:
+On Debian or Ubuntu, install fzf with:
 
 ```bash
-sudo apt install pipx fzf
-pipx ensurepath
+sudo apt install fzf
 ```
 
-Open a new terminal after `pipx ensurepath` updates your `PATH`.
-After the first PyPI release, install the command with:
+After the first PyPI release, install with pip:
+
+```bash
+pip install fzf-gnat
+```
+
+Or use pipx:
 
 ```bash
 pipx install fzf-gnat
-fzf-gnat --help
 ```
 
-pipx manages the virtual environment. No activation is necessary.
-Before publication, install from a local checkout:
-
-```bash
-pipx install .
-```
-
+For a local checkout, use `pip install .` or `pipx install .`.
 Install `bat` for syntax highlighting in the preview. Without it, the preview uses `cat`.
 
 ## Search files
@@ -65,20 +108,6 @@ Each row shows the qualified name, kind, unit, and file.
 Press Enter to open the editor at the declaration when the editor supports line arguments.
 Use `-q TEXT` to start fzf with an initial query.
 
-## Debian package
-
-Build on the target Debian or Ubuntu release with Python, pip, `dpkg`, and `dpkg-deb`:
-
-```bash
-python3 packaging/build_deb.py
-sudo apt install ./dist/fzf-gnat_*.deb
-```
-
-The package includes its Python dependencies in a private directory.
-It depends on the build interpreter's Python minor version, `libc6`, and `fzf`.
-It recommends `bat`.
-Rebuild for a different architecture, Python minor version, or distribution release.
-
 ## Development
 
 ```bash
@@ -93,7 +122,8 @@ The build produces a source archive and a wheel in `dist/`.
 
 ## Publish to PyPI
 
-The GitHub Actions workflow `.github/workflows/publish.yml` builds and checks both distributions.
+The GitHub Actions workflow `.github/workflows/publish.yml` tests pushes and pull requests on Python 3.10, 3.12, and 3.14.
+It builds and checks both distributions after the tests pass.
 It tests the installed wheel and checks installation with pipx before publication.
 A manual workflow run builds artifacts without publishing.
 A published GitHub release publishes to PyPI unless GitHub marks it as a prerelease.
