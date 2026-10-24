@@ -7,27 +7,28 @@ Preview the source, then open your selection in `$EDITOR`.
 ## Install
 
 Requires Python 3.10 or later and `fzf` on your `PATH`.
-On Debian or Ubuntu, install fzf with:
+On Debian or Ubuntu, install the prerequisites:
 
 ```bash
-sudo apt install fzf
+sudo apt install pipx fzf
+pipx ensurepath
 ```
 
-After the first PyPI release, install `fzf-gnat` in a virtual environment:
+Open a new terminal after `pipx ensurepath` updates your `PATH`.
+After the first PyPI release, install the command with:
 
 ```bash
-python3 -m venv ~/.venvs/fzf-gnat
-~/.venvs/fzf-gnat/bin/python -m pip install fzf-gnat
-~/.venvs/fzf-gnat/bin/fzf-gnat --help
+pipx install fzf-gnat
+fzf-gnat --help
 ```
 
-Activate that environment to use the command examples below:
+pipx manages the virtual environment. No activation is necessary.
+Before publication, install from a local checkout:
 
 ```bash
-source ~/.venvs/fzf-gnat/bin/activate
+pipx install .
 ```
 
-For a local checkout, replace `fzf-gnat` with `.` in the pip install command.
 Install `bat` for syntax highlighting in the preview. Without it, the preview uses `cat`.
 
 ## Search files
@@ -93,7 +94,7 @@ The build produces a source archive and a wheel in `dist/`.
 ## Publish to PyPI
 
 The GitHub Actions workflow `.github/workflows/publish.yml` builds and checks both distributions.
-It tests the installed wheel before publication.
+It tests the installed wheel and checks installation with pipx before publication.
 A manual workflow run builds artifacts without publishing.
 A published GitHub release publishes to PyPI unless GitHub marks it as a prerelease.
 
