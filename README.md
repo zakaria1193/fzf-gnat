@@ -19,7 +19,7 @@ A file picker shows these shortened names, so you need to know that `a-strunb.ad
 Otherwise, search the source to find the package:
 
 ```bash
-rg -l 'package Ada\.Strings\.Unbounded' gnat/libgnat
+grep -rl 'package Ada\.Strings\.Unbounded' gnat/libgnat
 ```
 
 Then open the matching file and search for `Append`.
