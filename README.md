@@ -1,6 +1,6 @@
 # fzf-gnat
 
-Search Ada source trees by unit name, file name, or declaration with fzf.
+Ada-aware search by unit name, file name, or declaration, using fzf.
 Find `Ada.Strings.Unbounded` even when GNAT names its source file `a-strunb.ads`.
 Preview the source, then open your selection in `$EDITOR`.
 
@@ -50,6 +50,24 @@ Pass a directory to search without changing your working directory:
 fzf-gnat -ss -q Ada.Strings.Unbounded.Append ~/work/toolchain/gnat
 ```
 
+## What Ada awareness adds to fzf
+
+fzf matches the text you give it. For example, `find . -type f | fzf` searches file paths.
+Those paths do not include the Ada unit names or declarations inside each file.
+
+fzf-gnat parses `.ads` and `.adb` files before passing their names and source locations to fzf.
+
+| Task | File paths passed to fzf | fzf-gnat |
+|---|---|---|
+| Find `Ada.Strings.Unbounded` | Match text in the path, such as `a-strunb.ads` | Search the full Ada unit name or the file name |
+| Find a declaration such as `Append` | Declaration names are absent from the list | Search qualified names such as `Ada.Strings.Unbounded.Append` |
+| Restrict results to declarations in specs | Requires preparing a different input list | Use `-ss` |
+| Open the editor at a declaration | Requires adding source locations to the input and editor command | Passes the declaration's line number to supported editors |
+
+The parser uses the `tree-sitter` Python bindings and the `tree-sitter-ada` grammar.
+pip and pipx install both dependencies automatically.
+No compiler or GNAT project file is required.
+
 ## Install
 
 Requires Python 3.10 or later and `fzf` on your `PATH`.
@@ -59,7 +77,7 @@ On Debian or Ubuntu, install fzf with:
 sudo apt install fzf
 ```
 
-After the first PyPI release, install with pip:
+Install with pip:
 
 ```bash
 pip install fzf-gnat
