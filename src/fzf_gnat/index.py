@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from krunch_fzf.names import symbols, unit_name
+from fzf_gnat.names import symbols, unit_name
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def cache_path(root: Path, variant: str = "") -> Path:
     base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     key = hashlib.sha1(str(root.resolve()).encode()).hexdigest()
     suffix = f".{variant}" if variant else ""
-    return base / "krunch-fzf" / f"{key}{suffix}.tsv"
+    return base / "fzf-gnat" / f"{key}{suffix}.tsv"
 
 
 def _walk(root: Path):

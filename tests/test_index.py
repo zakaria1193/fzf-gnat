@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from krunch_fzf import index
-from krunch_fzf.index import Entry, SymbolEntry, build_index, build_symbol_index, cache_path
-from krunch_fzf.names import unit_name
+from fzf_gnat import index
+from fzf_gnat.index import Entry, SymbolEntry, build_index, build_symbol_index, cache_path
+from fzf_gnat.names import unit_name
 
 TREE = {
     "libgnat/a-strunb.ads": "package Ada.Strings.Unbounded is\nend Ada.Strings.Unbounded;\n",

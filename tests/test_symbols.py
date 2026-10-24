@@ -1,6 +1,6 @@
 import pytest
 
-from krunch_fzf.names import Symbol, symbols
+from fzf_gnat.names import Symbol, symbols
 
 SPEC = """with X;
 package P is

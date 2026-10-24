@@ -1,4 +1,4 @@
-"""The ``krunch-fzf`` command."""
+"""The ``fzf-gnat`` command."""
 
 import argparse
 import logging
@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from krunch_fzf.index import Entry, SymbolEntry, build_index, build_symbol_index
+from fzf_gnat.index import Entry, SymbolEntry, build_index, build_symbol_index
 
 
 class ProgressBar:
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _main(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(
-        prog="krunch-fzf",
+        prog="fzf-gnat",
         description="Fuzzy search Ada sources by unit name and krunched file name, or by declaration.",
     )
     parser.add_argument("root", nargs="?", default=".", help="tree to search (default: .)")
@@ -164,16 +164,16 @@ def _main(argv: list[str] | None) -> int:
     erase = "\r\x1b[K" if tty else ""
     logging.basicConfig(
         level=logging.WARNING if args.verbose else logging.ERROR,
-        format=f"{erase}krunch-fzf: %(message)s",
+        format=f"{erase}fzf-gnat: %(message)s",
         force=True,
     )
 
     root = Path(args.root).resolve()
     if not root.is_dir():
-        print(f"krunch-fzf: {args.root}: not a directory", file=sys.stderr)
+        print(f"fzf-gnat: {args.root}: not a directory", file=sys.stderr)
         return 2
     if not args.print and not shutil.which("fzf"):
-        print("krunch-fzf: fzf not found on PATH", file=sys.stderr)
+        print("fzf-gnat: fzf not found on PATH", file=sys.stderr)
         return 2
 
     progress = ProgressBar(sys.stderr) if tty else None
@@ -215,6 +215,6 @@ def _main(argv: list[str] | None) -> int:
     try:
         subprocess.run(editor)
     except FileNotFoundError:
-        print(f"krunch-fzf: editor not found: {editor[0]}", file=sys.stderr)
+        print(f"fzf-gnat: editor not found: {editor[0]}", file=sys.stderr)
         return 2
     return 0

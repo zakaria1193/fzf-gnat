@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from krunch_fzf import cli
-from krunch_fzf.index import Entry, SymbolEntry
+from fzf_gnat import cli
+from fzf_gnat.index import Entry, SymbolEntry
 
 
 @pytest.fixture(autouse=True)

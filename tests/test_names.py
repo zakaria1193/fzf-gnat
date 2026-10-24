@@ -1,6 +1,6 @@
 import pytest
 
-from krunch_fzf.names import UnitName, unit_name
+from fzf_gnat.names import UnitName, unit_name
 
 CASES = {
     "a-strunb.ads": (

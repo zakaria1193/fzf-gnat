@@ -1,0 +1,3 @@
+include README.md
+include packaging/build_deb.py
+recursive-include tests *.py
