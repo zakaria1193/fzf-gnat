@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fzf-gnat"
-version = "0.1.0"
+version = "0.1.1"
 description = "Fuzzy search Ada sources by unit name and krunched file name"
 readme = "README.md"
 authors = [{name = "Zakaria Fadli", email = "zakaria1193@gmail.com"}]
